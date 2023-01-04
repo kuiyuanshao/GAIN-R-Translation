@@ -1,0 +1,61 @@
+---
+title: "Main"
+author: "Kuiyuan Shao"
+date: '2023-01-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+source("utils.R")
+source("gain.R")
+```
+
+
+```{r}
+n  <- 2000
+n2 <- 500
+
+beta <- c(1, 1, 1)
+e_U <- c(sqrt(3),sqrt(3))
+mx <- 0; sx <- 1; zrange <- 1; zprob <- .5
+
+simZ   <- rbinom(n, zrange, zprob)
+simX   <- (1-simZ)*rnorm(n, 0, 1) + simZ*rnorm(n, 0.5, 1)
+#error
+epsilon <- rnorm(n, 0, 1)
+#Y is added with epsilon
+simY    <- beta[1] + beta[2]*simX + beta[3]*simZ + epsilon
+#make X_star depends on it
+simX_tilde <- simX + rnorm(n, 0, e_U[1]*(simZ==0) + e_U[2]*(simZ==1))
+data <- data.frame(Y_tilde=simY, X_tilde=simX_tilde, Y=simY, X=simX, Z=simZ)
+##### Designs
+## SRS
+id_phase2 <- c(sample(n, n2))
+data$X[-id_phase2] <- NA
+```
+
+
+```{r}
+library(tensorflow)
+py <- rminiconda::find_miniconda_python("your_name")
+reticulate::use_python(py, required = TRUE)
+tf$constant("Hello Tensorflow!")
+```
+
+
+```{r}
+x <- import("tensorflow.compat.v1", as="tf") 
+x$disable_v2_behavior()
+#X <- tf$compat$v1$placeholder(tf$float32)
+
+try1 <- gain(data, 128, 0.9, 100, 10000)
+
+mod <- lm(Y ~ X + Z, data = try1)
+summary(mod)
+```
