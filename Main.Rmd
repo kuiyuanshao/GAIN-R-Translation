@@ -18,7 +18,7 @@ source("gain.R")
 
 
 ```{r}
-n  <- 2000
+n  <- 4000
 n2 <- 500
 
 beta <- c(1, 1, 1)
@@ -43,19 +43,32 @@ data$X[-id_phase2] <- NA
 
 ```{r}
 library(tensorflow)
-py <- rminiconda::find_miniconda_python("your_name")
-reticulate::use_python(py, required = TRUE)
+#library(reticulate)
+#remotes::install_github("hafen/rminiconda")
+#rminiconda::install_miniconda(name='your_name')
+#py <- rminiconda::find_miniconda_python("your_name")
+#reticulate::use_python(py, required = TRUE)
 tf$constant("Hello Tensorflow!")
-```
-
-
-```{r}
 x <- import("tensorflow.compat.v1", as="tf") 
 x$disable_v2_behavior()
+```
+
+```{r}
+source("utils.R")
+source("gain.R")
+```
+
+# 75% Missing
+```{r}
 #X <- tf$compat$v1$placeholder(tf$float32)
 
-try1 <- gain(data, 128, 0.9, 100, 10000)
+imputed_data <- gain(data, 128, 0.9, 100, 5000, m = 5)
+coefs <- NULL
 
-mod <- lm(Y ~ X + Z, data = try1)
-summary(mod)
+for (i in 1:5){
+  mod <- lm(Y ~ X + Z, data = imputed_data[[i]])
+  coefs[i] <- coef(mod)[2]
+}
+mean(coefs)
+
 ```
