@@ -92,7 +92,7 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
   sess <- tf$compat$v1$Session()
   sess$run(tf$compat$v1$global_variables_initializer())
   
-  
+  pb <- txtProgressBar(min = 0, max = iterations, initial = 0) 
   for (it in 1:iterations){ 
     # Sample batch
     batch_idx <- sample_batch_index(nRow, batch_size)
@@ -112,8 +112,10 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
     G_loss_curr <- run_result[[2]]
     
     MSE_loss_curr <- run_result[[3]]
+    
+    setTxtProgressBar(pb,i)
   }
-  
+  close(pb)
     ## Return imputed data      
   Z_mb <- uniform_sampler(0, 0.01, nRow, nCol) 
   M_mb <- data_m
