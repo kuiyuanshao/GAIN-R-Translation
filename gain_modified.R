@@ -1,31 +1,35 @@
 
 
 
-gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
-  data_m <- 1 - is.na(data_x)
-  
-  nRow <- dim(data_x)[1]
-  nCol <- dim(data_x)[2]
+gain_imp <- function(data, batch_size, hint_rate, alpha, iterations){
+  data_r <- data$R
+  data <- data[, -((dim(data)[2] - 1):dim(data)[2])]
+  data_m <- 1 - is.na(data)
+  nRow <- dim(data)[1]
+  nCol <- dim(data)[2]
   
   #nCol <- nCol
   
-  norm_result <- normalize(data_x)
+  norm_result <- normalize(data)
   norm_data <- norm_result$norm_data
   norm_parameters <- norm_result$norm_parameters
   
-  norm_data_x <- norm_data
-  norm_data_x[is.na(norm_data_x)] <- 0
+  norm_data_0 <- norm_data
+  norm_data_0[is.na(norm_data_0)] <- 0
   
   X <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, nCol))
+  R <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, 
+                                                         as.integer(1)))
   M <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, nCol))
-  H <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, nCol))
+  H <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, 
+                                                         as.integer(1)))
   
   
-  D_W1 <- tf$Variable(xavier_init(as.integer(c(nCol*2, nCol))))
-  D_b1 <- tf$Variable(tf$zeros(shape = c(nCol)))
+  D_W1 <- tf$Variable(xavier_init(as.integer(c(nCol + 1, nCol))))
+  D_b1 <- tf$Variable(tf$zeros(shape = as.integer(nCol)))
   
   D_W2 <- tf$Variable(xavier_init(as.integer(c(nCol, nCol))))
-  D_b2 <- tf$Variable(tf$zeros(shape = c(nCol)))
+  D_b2 <- tf$Variable(tf$zeros(shape = as.integer(nCol)))
   
   D_W3 <- tf$Variable(xavier_init(as.integer(c(nCol, nCol))))
   D_b3 <- tf$Variable(tf$zeros(shape = c(nCol)))
@@ -33,8 +37,8 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
   
   theta_D <- c(D_W1, D_W2, D_W3, D_b1, D_b2, D_b3)
   
-  G_W1 <- tf$Variable(xavier_init(as.integer(c(nCol*2, nCol)))) 
-  G_b1 <- tf$Variable(tf$zeros(shape = c(nCol)))
+  G_W1 <- tf$Variable(xavier_init(as.integer(c(nCol + 1, nCol)))) 
+  G_b1 <- tf$Variable(tf$zeros(shape = as.integer(nCol)))
   
   G_W2 <- tf$Variable(xavier_init(as.integer(c(nCol, nCol))))
   G_b2 <- tf$Variable(tf$zeros(shape = c(nCol)))
@@ -44,9 +48,9 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
   
   theta_G <- c(G_W1, G_W2, G_W3, G_b1, G_b2, G_b3)
   
-  generator <-  function(x, m){
+  generator <-  function(x, r){
     # Concatenate Mask and Data
-    inputs <- tf$concat(values = c(x, m), axis = as.integer(1)) 
+    inputs <- tf$concat(values = c(x, r), axis = as.integer(1)) 
     G_h1 <- tf$nn$relu(tf$matmul(inputs, G_W1) + G_b1)
     G_h2 <- tf$nn$relu(tf$matmul(G_h1, G_W2) + G_b2)   
     # MinMax normalized output
@@ -65,7 +69,7 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
     
   }
   
-  G_sample <- generator(X, M)
+  G_sample <- generator(X, R)
   
   # Combine with observed data
   Hat_X <- X * M + G_sample * (1 - M)
@@ -93,7 +97,7 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
   ## Iterations
   sess <- tf$compat$v1$Session()
   sess$run(tf$compat$v1$global_variables_initializer())
-  
+
   pb <- progress_bar$new(
     format = "Running :what [:bar] :percent eta: :eta",
     clear = FALSE, total = iterations, width = 60)
@@ -101,21 +105,24 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
   for (it in 1:iterations){ 
     # Sample batch
     batch_idx <- sample_batch_index(nRow, batch_size)
-    X_mb <- norm_data_x[batch_idx, ]  
-    M_mb <- data_m[batch_idx, ]  
+    X_mb <- norm_data_0[batch_idx, ]  
+    R_mb <- as.matrix(data_r[batch_idx])  
+    M_mb <- data_m[batch_idx, ]
     # Sample random vectors  
     Z_mb <- uniform_sampler(0, 0.01, batch_size, nCol) 
     # Sample hint vectors
-    H_mb_temp <- binary_sampler(1 - hint_rate, batch_size, nCol)
-    H_mb <- M_mb * H_mb_temp
+    H_mb_temp <- binary_sampler(1 - hint_rate, batch_size, 1)
+    H_mb <- R_mb * H_mb_temp
   
     # Combine random vectors with observed vectors
     X_mb <- M_mb * X_mb + (1-M_mb) * Z_mb 
   
     D_loss_curr <- sess$run(c(D_solver, D_loss_temp), 
-                            feed_dict = dict(M = M_mb, X = X_mb, H = H_mb))[[2]]
+                            feed_dict = dict(R = R_mb, X = X_mb, 
+                                             H = H_mb, M = M_mb))[[2]]
     run_result <- sess$run(c(G_solver, G_loss_temp, MSE_loss), 
-                           feed_dict = dict(X = X_mb, M = M_mb, H = H_mb))
+                           feed_dict = dict(X = X_mb, R = R_mb, 
+                                            H = H_mb, M = M_mb))
     G_loss_curr <- run_result[[2]]
     
     MSE_loss_curr <- run_result[[3]]
@@ -126,22 +133,22 @@ gain_imp <- function(data_x, batch_size, hint_rate, alpha, iterations){
     ## Return imputed data      
   Z_mb <- uniform_sampler(0, 0.01, nRow, nCol) 
   M_mb <- data_m
-  X_mb <- norm_data_x          
+  X_mb <- norm_data_0        
   X_mb <- M_mb * X_mb + (1-M_mb) * Z_mb 
   
-  imputed_data <- sess$run(c(G_sample), feed_dict = dict(X = X_mb, M = M_mb))[[1]]
+  imputed_data <- sess$run(c(G_sample), feed_dict = dict(X = X_mb, R = as.matrix(data_r)))[[1]]
   
-  imputed_data <- data_m * norm_data_x + (1 - data_m) * imputed_data
+  imputed_data <- data_m * norm_data + (1 - data_m) * imputed_data
   # Renormalization
   imputed_data <- renormalize(imputed_data, norm_parameters)  
   # Rounding
-  imputed_data <- rounding(imputed_data, data_x)  
+  imputed_data <- rounding(imputed_data, data)  
   
   return (imputed_data)
 }
 
 
-gain <- function(data_x, batch_size, hint_rate, alpha, iterations, m = 5){
+gain <- function(data, batch_size, hint_rate, alpha, iterations, m = 5){
   #library(future.apply)
   #x <- import("tensorflow.compat.v1", as="tf") 
   #x$disable_v2_behavior()
@@ -151,7 +158,7 @@ gain <- function(data_x, batch_size, hint_rate, alpha, iterations, m = 5){
   #imputed_data <- future_replicate(m, gain_imp(data_x, batch_size, hint_rate, alpha, iterations))
   imputed_data <- NULL
   for (i in 1:m){
-    imputed_data[[i]] <- gain_imp(data_x, batch_size, hint_rate, alpha, iterations)
+    imputed_data[[i]] <- gain_imp(data, batch_size, hint_rate, alpha, iterations)
   }
   
   return (imputed_data)

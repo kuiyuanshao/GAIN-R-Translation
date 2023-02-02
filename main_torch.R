@@ -1,5 +1,5 @@
 library(torch)
-
+library(progress)
 source("utils_torch.R")
 source("gain_torch.R")
 sim <- function(mr){

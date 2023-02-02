@@ -3,6 +3,8 @@
 gain <- function(data, batch_size = 128, hint_rate = 0.9, alpha = 10, n = 5000){
   if (cuda_is_available()){
     device <- torch_device("cuda")
+  }else if (backends_mps_is_available()){
+    device <- torch_device("mps")
   }else{
     device <- torch_device("cpu")
   }
@@ -18,10 +20,9 @@ gain <- function(data, batch_size = 128, hint_rate = 0.9, alpha = 10, n = 5000){
   
   
   data_mask <- 1 - is.na(data)
-  data_mask <- torch_tensor(data_mask, dtype = torch_float(),
-                            device = device)
-  norm_data <- torch_tensor(as.matrix(norm_data), dtype = torch_float(), 
-                            device = device)
+  norm_data <- as.matrix(norm_data)
+  #data_mask <- torch_tensor(data_mask, dtype = torch_float(), device = device)
+  #norm_data <- torch_tensor(as.matrix(norm_data), dtype = torch_float(), device = device)
   
   layer <- nn_sequential(
     nn_linear(nCol * 2, nCol),
@@ -64,6 +65,9 @@ gain <- function(data, batch_size = 128, hint_rate = 0.9, alpha = 10, n = 5000){
     
     return (G_loss + alpha * MSE_loss)
   }
+  pb <- progress_bar$new(
+    format = "Running :what [:bar] :percent eta: :eta",
+    clear = FALSE, total = n, width = 60)
   
   for (i in 1:n){
     D_solver$zero_grad()
@@ -72,8 +76,10 @@ gain <- function(data, batch_size = 128, hint_rate = 0.9, alpha = 10, n = 5000){
       size <- min(batch_size, nRow)
       idx <- sample_index(nRow, size)
       
-      x_mb <- norm_data[idx,]
-      m_mb <- data_mask[idx,]
+      x_mb <- torch_tensor(norm_data[idx,], dtype = torch_float(),
+                           device = device)
+      m_mb <- torch_tensor(data_mask[idx,], dtype = torch_float(),
+                           device = device)
       
       z_mb <- uniform_sampling(0, 0.01, size, nCol, matrix = "z")
       h_mb <- uniform_sampling(0, 1, size, nCol, matrix = "h", 
@@ -96,20 +102,24 @@ gain <- function(data, batch_size = 128, hint_rate = 0.9, alpha = 10, n = 5000){
     g_loss$backward()
     G_solver$step()
     
+    pb$tick(tokens = list(what = "GAIN   "))
+    Sys.sleep(2 / 100)
   }
   
   Z_mb <- uniform_sampling(0, 0.01, nRow, nCol, matrix = "z") 
-  M_mb <- data_mask
-  X_mb <- norm_data          
+  M_mb <- torch_tensor(data_mask, dtype = torch_float(),
+                       device = device)
+  X_mb <- torch_tensor(norm_data, dtype = torch_float(),
+                       device = device)
   X_mb <- M_mb * X_mb + (1-M_mb) * Z_mb 
   
   imputed_data <- generator(X_mb, M_mb)
-  imputed_data <- data_mask * norm_data + (1 - data_mask) * imputed_data
+  imputed_data <- M_mb * X_mb + (1 - M_mb) * imputed_data
   
   imputed_data <- renormalize(imputed_data, norm_parameters)
-  
   imputed_data <- as.data.frame(as.matrix(imputed_data))
   names(imputed_data) <- names(data)
-  imputed_data <- rounding(imputed_data, data_x)  
+  imputed_data <- rounding(imputed_data, data)  
+  
   return (imputed_data)
 }

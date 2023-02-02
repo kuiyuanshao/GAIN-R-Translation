@@ -1,9 +1,10 @@
 library(tensorflow)
+library(progress)
 tf$constant("Hello Tensorflow!")
 x <- import("tensorflow.compat.v1") 
 x$disable_v2_behavior()
 source("utils.R")
-source("gain.R")
+source("gain_modified.R")
 sim <- function(mr){
   n  <- 4000
   n2 <- 4000 - 4000*mr
@@ -25,8 +26,18 @@ sim <- function(mr){
   ## SRS
   id_phase2 <- c(sample(n, n2))
   data$X[-id_phase2] <- NA
+  data$R <- 0
+  data$R[id_phase2] <- 1
+  data$pi <- n2 / n
   return (data)
 }
-
+batch_size = 128
+hint_rate = 0.9
+alpha = 10
+iterations = 5000
 data <- sim(mr = 0.8)
 imputed_data <- gain_imp(data, 128, 0.9, 10, 5000)
+head(data)
+head(imputed_data)
+mod <- lm(Y ~ X + Z, data = imputed_data)
+summary(mod)
