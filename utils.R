@@ -153,7 +153,7 @@ binary_sampler <- function(p, rows, cols){
   '
   unif_random_matrix <- matrix(runif(n = rows * cols, 0, 1), byrow = T, 
                                nrow = rows)
-  binary_random_matrix <- 1*(unif_random_matrix < p)
+  binary_random_matrix <- 1*(unif_random_matrix > p)
   return (binary_random_matrix)
   
 }

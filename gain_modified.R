@@ -1,7 +1,8 @@
 
 
 
-gain_imp <- function(data, batch_size, hint_rate, alpha, iterations){
+gain_imp <- function(data, batch_size = 128, hint_rate = 0.9, 
+                     alpha = 10, n = 5000){
   data_r <- data$R
   data <- data[, -((dim(data)[2] - 1):dim(data)[2])]
   data_m <- 1 - is.na(data)
@@ -14,8 +15,7 @@ gain_imp <- function(data, batch_size, hint_rate, alpha, iterations){
   norm_data <- norm_result$norm_data
   norm_parameters <- norm_result$norm_parameters
   
-  norm_data_0 <- norm_data
-  norm_data_0[is.na(norm_data_0)] <- 0
+  norm_data[is.na(norm_data)] <- 0
   
   X <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, nCol))
   R <- tf$compat$v1$placeholder(tf$float32, shape = list(NULL, 
@@ -100,12 +100,12 @@ gain_imp <- function(data, batch_size, hint_rate, alpha, iterations){
 
   pb <- progress_bar$new(
     format = "Running :what [:bar] :percent eta: :eta",
-    clear = FALSE, total = iterations, width = 60)
+    clear = FALSE, total = n, width = 60)
   
-  for (it in 1:iterations){ 
+  for (it in 1:n){ 
     # Sample batch
     batch_idx <- sample_batch_index(nRow, batch_size)
-    X_mb <- norm_data_0[batch_idx, ]  
+    X_mb <- norm_data[batch_idx, ]  
     R_mb <- as.matrix(data_r[batch_idx])  
     M_mb <- data_m[batch_idx, ]
     # Sample random vectors  
@@ -133,7 +133,7 @@ gain_imp <- function(data, batch_size, hint_rate, alpha, iterations){
     ## Return imputed data      
   Z_mb <- uniform_sampler(0, 0.01, nRow, nCol) 
   M_mb <- data_m
-  X_mb <- norm_data_0        
+  X_mb <- norm_data       
   X_mb <- M_mb * X_mb + (1-M_mb) * Z_mb 
   
   imputed_data <- sess$run(c(G_sample), feed_dict = dict(X = X_mb, R = as.matrix(data_r)))[[1]]
@@ -142,23 +142,17 @@ gain_imp <- function(data, batch_size, hint_rate, alpha, iterations){
   # Renormalization
   imputed_data <- renormalize(imputed_data, norm_parameters)  
   # Rounding
-  imputed_data <- rounding(imputed_data, data)  
+  #imputed_data <- rounding(imputed_data, data)  
   
   return (imputed_data)
 }
 
 
-gain <- function(data, batch_size, hint_rate, alpha, iterations, m = 5){
-  #library(future.apply)
-  #x <- import("tensorflow.compat.v1", as="tf") 
-  #x$disable_v2_behavior()
-  
-  #plan(multisession, workers = m)
-  
-  #imputed_data <- future_replicate(m, gain_imp(data_x, batch_size, hint_rate, alpha, iterations))
+gain <- function(data, m = 5, batch_size = 128, 
+                 hint_rate = 0.9, alpha = 10, n = 5000){
   imputed_data <- NULL
   for (i in 1:m){
-    imputed_data[[i]] <- gain_imp(data, batch_size, hint_rate, alpha, iterations)
+    imputed_data[[i]] <- gain_imp(data, batch_size, hint_rate, alpha, n)
   }
   
   return (imputed_data)

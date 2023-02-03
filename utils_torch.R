@@ -43,21 +43,6 @@ renormalize <- function(norm_data, norm_parameters){
   return (renorm_data)
 }
 
-rounding <- function(imputed_data, data_x){
-  
-  nVar <- dim(data_x)[2]
-  rounded_data <- imputed_data
-  
-  for (i in 1:nVar){
-    temp <- data_x[!is.na(data_x[, i]), i]
-    
-    if (length(unique(temp)) < 20){
-      rounded_data[, i] <- round(rounded_data[, i])
-    }
-  }
-  
-  return (rounded_data)
-}
 
 
 uniform_sampling <- function(min, max, nr, nc, matrix = c("z", "h"), hint_rate = NULL){
@@ -66,9 +51,16 @@ uniform_sampling <- function(min, max, nr, nc, matrix = c("z", "h"), hint_rate =
   if (matrix == "z"){
     return (torch_tensor(unif_matrix, device = device)) 
   }else{
-    H <- unif_matrix > hint_rate
-    H <- 1 * H
+    H <- 1 * (unif_matrix > hint_rate)
     return(torch_tensor(H, device = device))
+  }
+}
+
+rounding <- function(imputed_data, data){
+  num <- unlist(lapply(data, is.numeric))
+  for (i in num){
+    
+    nchar(strsplit(as.character(), "\\.")[[1]][2])
   }
 }
 
@@ -82,7 +74,10 @@ sample_index <- function(total, batch_size){
 }
 
 
-
+xavier_init <- function(size, device){
+  xavier_stddev <- 1 / sqrt(size[1] / 2)
+  return (torch_randn(size, device = device) * xavier_stddev)
+}
 
 
 

@@ -18,15 +18,21 @@ sim <- function(mr){
   simY    <- beta[1] + beta[2]*simX + beta[3]*simZ + epsilon
   #make X_star depends on it
   simX_tilde <- simX + rnorm(n, 0, e_U[1]*(simZ==0) + e_U[2]*(simZ==1))
-  data <- data.frame(Y_tilde=simY, X_tilde=simX_tilde, Y=simY, X=simX, Z=simZ)
+  data_full <- data.frame(Y_tilde=simY, X_tilde=simX_tilde, Y=simY, X=simX, Z=simZ)
   ##### Designs
   ## SRS
+  data <- data_full
   id_phase2 <- c(sample(n, n2))
   data$X[-id_phase2] <- NA
-  return (data)
+  data$R <- 0
+  data$R[id_phase2] <- 1
+  data$pi <- n2 / n
+  return (list(data, data_full))
 }
 
-data <- sim(mr = 0.4)
+output <- sim(mr = 0.8)
+data <- output[[1]]
+data_full <- output[[2]]
 
 imp <- gain(data, 128, 0.9, 10, 5000)
 mod <- lm(Y ~ X + Z, data = imp)
