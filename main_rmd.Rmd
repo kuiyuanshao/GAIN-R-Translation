@@ -73,8 +73,8 @@ load("SampleData_0001.RData")
 library(survey)
 library(data.table)
 library(tidyverse)
-data <- samp <- as.data.table(samp) 
-samp.solnas <- samp[(solnas==T),]
+data <- samp <- as.data.frame(samp) 
+samp.solnas <- samp[(samp$solnas==T),]
 lm.lsodi <- glm(c_ln_na_bio1 ~ c_age + c_bmi + c_ln_na_avg + high_chol + usborn + female + bkg_pr + bkg_o,
                 data=samp.solnas)
 samp$c_ln_na_calib <- as.matrix(predict(lm.lsodi, newdata=samp, type = 'response'))
@@ -85,8 +85,10 @@ samp$c_ln_na_bio1[samp$solnas == T] <- data$c_ln_na_bio1[samp$solnas == T]
 
 samp$sex <- ifelse(samp$sex == "M", 1, 0)
 samp$hisp.strat <- 1 * samp$hisp.strat
-samp <- samp %>% select(-bkg)
-
+samp$age.strat <- 1 * samp$age.strat
+samp <- samp %>% select(-bkg, -idx, -strat, -BGid, -hhid, -hisp.strat, -subid, -v.num)
+samp$R <- ifelse(is.na(c_ln_na_bio1), 0, 1)
+imp <- gain(samp)
 
 modcoef_hyper <- modvar_hyper <- modcoef_sbp <- modvar_sbp <- matrix(rep(0, 9 * 3), ncol = 9)
 for (i in 1:3){
