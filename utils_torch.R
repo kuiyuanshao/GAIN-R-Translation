@@ -1,13 +1,12 @@
 
 
 
-normalize <- function(data, parameters = NULL){
-  nVar <- dim(data)[2]
+normalize <- function(data, parameters = NULL, Var){
   norm_data <- data
   
   if (is.null(parameters)){
-    min_val <- max_val <- rep(0, nVar)
-    for (i in 1:nVar){
+    min_val <- max_val <- rep(0, length(Var))
+    for (i in Var){
       min_val[i] <- min(norm_data[, i], na.rm = T)
       norm_data[, i] <- norm_data[, i] - min(norm_data[, i], na.rm = T)
       max_val[i] <- max(norm_data[, i], na.rm = T)
@@ -19,7 +18,7 @@ normalize <- function(data, parameters = NULL){
     min_val <- parameters$min_val
     max_val <- parameters$max_val
     
-    for (i in 1:nVar){
+    for (i in Var){
       norm_data[, i] <- norm_data[, i] - min_val[i]
       norm_data[, i] <- norm_data[, i] / (max_val[i] + 1e-6)
     }
@@ -28,14 +27,13 @@ normalize <- function(data, parameters = NULL){
   return (list(norm_data = norm_data, norm_parameters = norm_parameters))
 }
 
-renormalize <- function(norm_data, norm_parameters){
+renormalize <- function(norm_data, norm_parameters, Var){
   
   min_val <- norm_parameters$min_val
   max_val <- norm_parameters$max_val
   
-  nVar <- dim(norm_data)[2]
   renorm_data <- norm_data
-  for (i in 1:nVar){
+  for (i in Var){
     renorm_data[, i] <- renorm_data[, i] * (max_val[i] + 1e-6)
     renorm_data[, i] <- renorm_data[, i] + min_val[i]
   }
@@ -45,7 +43,7 @@ renormalize <- function(norm_data, norm_parameters){
 
 
 
-uniform_sampling <- function(min, max, nr, nc, matrix = c("z", "h"), hint_rate = NULL){
+uniform_sampling <- function(min, max, nr, nc, matrix = c("z", "h"), hint_rate = NULL, device){
   random_unif <- runif(min = min, max = max, n = nr * nc)
   unif_matrix <- matrix(random_unif, nrow = nr, ncol = nc, byrow = T)
   if (matrix == "z"){
