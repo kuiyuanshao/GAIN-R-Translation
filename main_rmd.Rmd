@@ -13,9 +13,9 @@ library(torch)
 library(progress)
 source("utils_torch.R")
 source("gain_torch_modified.R")
-sim <- function(){
-  n  <- 2000
-  n2 <- 500
+sim <- function(mr = 0.8){
+  n  <- 5000
+  n2 <- 5000 - 5000*mr
   
   beta <- c(1, 1, 1)
   e_U <- c(sqrt(3),sqrt(3))
@@ -29,121 +29,96 @@ sim <- function(){
   simY    <- beta[1] + beta[2]*simX + beta[3]*simZ + epsilon
   #make X_star depends on it
   simX_tilde <- simX + rnorm(n, 0, e_U[1]*(simZ==0) + e_U[2]*(simZ==1))
-  data_full <- data.frame(X_tilde=simX_tilde, Y=simY, X=simX, Z=simZ)
+  data_full <- data.frame(Y_tilde=simY, X_tilde=simX_tilde, Y=simY, X=simX, Z=simZ)
   ##### Designs
   ## SRS
   data <- data_full
   id_phase2 <- c(sample(n, n2))
   data$X[-id_phase2] <- NA
+  data$R <- 0
+  data$R[id_phase2] <- 1
+  observed_resid <- data$X_tilde[id_phase2] - data$X[id_phase2]
+  data$resid <- 0
+  data$resid[id_phase2] <- observed_resid
+  data$resid[-id_phase2] <- sample(observed_resid, n - n2, replace = T)
   return (list(data, data_full))
 }
 ```
 
 ```{r}
-# library(tensorflow)
-# source("gain.R")
-# source("utils.R")
-# x <- import("tensorflow.compat.v1") 
-# x$disable_v2_behavior()
-
-output <- sim()
+#source("gain.R")
+#source("utils.R")
+#library(tensorflow)
+#tf$constant("Hello Tensorflow!")
+#x <- import("tensorflow.compat.v1") 
+#x$disable_v2_behavior()
+source("utils_torch.R")
+source("gain_torch_modified_6.R")
+library(torch)
+library(progress)
+output <- sim(mr = 0.9)
 data <- output[[1]]
 data_full <- output[[2]]
-
-data <- read.csv("Missing.csv")
-data$R <- 1 * !is.na(data$X)
-write.csv(data, "Missing.csv")
-
-ind <- which(is.na(data$X))
-
-imp <- gain(data, 128, 0.9, 10, 5000)
-imp$Z <- round(imp$Z)
-
-errormod <- lm(X ~ X_tilde + Y + Z, data = data_full)
-summary(errormod)
-
-modfull <- lm(Y ~ X + Z, data = data_full)
-summary(modfull)
-
-modmis <- lm(Y ~ X + Z, data = data)
-summary(modmis)
-
-mod <- lm(Y ~ X + Z, data = imp)
-summary(mod)
-
-modimp <- lm(X ~ X_tilde + Y + Z, data = imp[ind, ])
-summary(modimp)
-
-
-py <- list(0)
-for (i in seq(0, 9)){
-  py[[i + 1]] <- read.csv(paste0("tryTwo", i, ".csv"))
-  py[[i + 1]] <- py[[i + 1]][, -1]
-  names(py[[i + 1]]) <- names(data)[2:5]
-}
-
-
-coef_X <- coef_Xti <- sd_X <- sd_Xti <- NULL
-for (i in 1:10){
-  mod <- lm(Y ~ X + Z, data = py[[i]][ind, ])
-  modimp <- lm(X ~ X_tilde + Y + Z, data = py[[i]][ind, ])
-  
-  coef_X[i] <- coef(mod)[2]
-  coef_Xti[i] <- coef(modimp)[2]
-  
-  sd_X[i] <- vcov(mod)[2, 2]
-  sd_Xti[i] <- vcov(modimp)[2, 2]
-}
-
-data <- data[, -c(1, dim(data)[2])]
-library(mixgb)
-data <- data[-2000, ]
-coef_X
-plot_hist(imputation.list = py, var.name = "X",
-    original.data = data)
-plot_2num(imputation.list = py, var.x = "X_tilde",
-    var.y = "X", original.data = data)
-```
-```{r}
-library(missMethods)
-data_mis <- delete_MCAR(data_full, p = 0.3)
-imp <- gain(data_mis)
-imp$Z <- round(imp$Z)
-mod <- lm(Y ~ X + Z, data = imp)
-summary(mod)
-
-imp_da <- mixgb(data)
-mod <- lm(Y ~ X + Z, data = imp_da[[2]][ind, ])
-summary(mod)
-
-plot_hist(imputation.list = imp_da, var.name = "X",
-    original.data = data)
-```
-
-```{r}
-save(data, data_full, file = "data.RData")
+data$R <- NULL
+ind <- is.na(data$X)
+library(dplyr)
+imp_list <- list()
 coef <- sd <- NULL
-for (i in 1:10){
-  imp <- gain(data, 128, 0.9, 10, 5000)
-  imp$Z <- round(imp$Z)
-  save(imp, file = paste0("imp", i, ".RData"))
+for (i in 1:2){
+  imp <- gain(data, vartype = c(1, 1, 1, 1, 0), 
+              n = 10000, alpha = 10, hint_rate = 0.9, 
+              batch_size = 128)
   mod <- lm(Y ~ X + Z, data = imp[ind, ])
-  summary(mod)
   coef[i] <- coef(mod)[2]
   sd[i] <- sqrt(vcov(mod)[2, 2])
+  
+  imp$Z0 <- NULL
+  imp$Z1 <- NULL
+  imp_list[[i]] <- imp
 }
-summary(mod)
-
 coef
 mean(coef)
 sd
 mean(sd) + (5 + 1) * var(coef) / 5
+```
+
+```{r}
+#load("imp_list3.RData")
 
 modfull <- lm(Y ~ X + Z, data = data_full)
 summary(modfull)
 
 modmis <- lm(Y ~ X + Z, data = data)
 summary(modmis)
+#data$R <- NULL
+library(mixgb)
+data$R <- NULL
+plot_hist(imputation.list = imp_list, var.name = "X",
+    original.data = data)
+```
+
+
+```{r}
+data <- read.csv("Data/tryMis1One0.csv", header = F)
+names(data) <- c("index", "X_tilde", "Y", "X", "Z", "resid")
+```
+
+
+
+```{r}
+hyperimpute <- read.csv("hyperimpute_gain.csv", header = F)
+
+names(hyperimpute) <- names(data)
+mod <- lm(X ~ X_tilde + Z + Y, data = hyperimpute)
+summary(mod)
+modfull <- lm(X ~ X_tilde + Z + Y, data = data_full)
+summary(modfull)
+
+library(mixgb)
+head(data)
+plot_hist(imputation.list = imp_list, var.name = "X",
+    original.data = data)
+
 ```
 
 
@@ -165,31 +140,72 @@ samp$c_ln_na_bio1[samp$solnas == T] <- data$c_ln_na_bio1[samp$solnas == T]
 samp$sex <- ifelse(samp$sex == "M", 1, 0)
 samp$hisp.strat <- 1 * samp$hisp.strat
 samp$age.strat <- 1 * samp$age.strat
-samp <- samp %>% select(-bkg, -idx, -strat, -BGid, -hhid, -hisp.strat, -subid, -v.num)
-samp$R <- ifelse(is.na(samp$c_ln_na_bio1), 0, 1)
-imp <- gain(samp)
+samp$solnas <- 1 * samp$solnas
+samp <- samp %>% select(-bkg)
+#samp$R <- ifelse(is.na(c_ln_na_bio1), 0, 1)
 
-modcoef_hyper <- modvar_hyper <- modcoef_sbp <- modvar_sbp <- matrix(rep(0, 9 * 3), ncol = 9)
-for (i in 1:3){
-  imp <- gain(samp)
-  imp$BGid <- samp$BGid
-  imp$strat <- samp$strat
+write.csv(samp, "Missing1.csv")
+imp_list2 <- list(0)
+for (i in seq(0, 9)){
+  curr <- read.csv(paste0("Data//tryMis1One", i, ".csv"), header = F)
+  names(curr) <- names(samp)
+  curr$BGid <- data$BGid
+  curr$strat <- data$strat
+  curr$bghhsub_s2 <- data$bghhsub_s2
+  imp_list2[[i + 1]] <- curr
+}
+
+samp$BGid <- data$BGid
+samp$strat <- data$strat
+samp$bghhsub_s2 <- data$bghhsub_s2
+save(imp_list2, file = "imp_list2.RData")
+
+imp_list <- imp_list2
+
+source("gain_torch_modified_1.R")
+imp_list <- list(0)
+for (i in 1:10){
   
-  mi.design <- svydesign(id=~BGid, strata=~strat, weights=~bghhsub_s2, data=imp)
+  imp_list[[i]] <- gain(samp, n = 1000)
+  
+}
+load("imp_list2.RData")
+
+modcoef_hyper1 <- modvar_hyper1 <- modcoef_sbp1 <- modvar_sbp1 <- matrix(rep(0, 9 * 10), ncol = 9)
+for (i in 1:10){
+  
+  mi.design <- svydesign(id=~BGid, strata=~strat, weights=~bghhsub_s2, data=imp_list[[i]])
   
   mod_hyper <- svyglm(hypertension ~ c_age + c_bmi + c_ln_na_bio1 + 
                         high_chol + usborn + female + bkg_pr + bkg_o,design=mi.design,family=quasibinomial())
   mod_sbp <- svyglm(sbp ~ c_age + c_bmi + c_ln_na_bio1 + 
                       high_chol + usborn + female + bkg_pr + bkg_o,design=mi.design,family=gaussian())
   
-  modcoef_hyper[i, ] <- mod_hyper$coeff
-  modcoef_sbp[i, ] <- mod_sbp$coeff
+  modcoef_hyper1[i, ] <- mod_hyper$coeff
+  modcoef_sbp1[i, ] <- mod_sbp$coeff
   
-  modvar_hyper[i, ] <- summary(mod_hyper)$coeff[, 2]^2
-  modvar_sbp[i, ] <- summary(mod_sbp)$coeff[, 2]^2
+  modvar_hyper1[i, ] <- summary(mod_hyper)$coeff[, 2]^2
+  modvar_sbp1[i, ] <- summary(mod_sbp)$coeff[, 2]^2
 }
 
-head(samp)
-head(imp)
+
+full_design <- svydesign(id=~BGid, strata=~strat, weights=~bghhsub_s2, data=data)
+mod_full_hyper <- svyglm(hypertension ~ c_age + c_bmi + c_ln_na_bio1 + 
+                        high_chol + usborn + female + 
+                          bkg_pr + bkg_o,design=full_design,family=quasibinomial())
+mod_full_sbp <- svyglm(sbp ~ c_age + c_bmi + c_ln_na_bio1 + 
+                      high_chol + usborn + female + bkg_pr + bkg_o,design=full_design,family=gaussian())
+
+coef(mod_full_hyper)
+modcoef_hyper
+modcoef_hyper1
+coef(mod_full_sbp)
+modcoef_sbp
+modcoef_sbp1
+
+modvar_hyper
+modvar_sbp
+diag(vcov(mod_full_hyper))
+diag(vcov(mod_full_sbp))
 ```
 

@@ -1,5 +1,44 @@
 
-
+onehot_encoding <- function(data, ind){
+  one_hot_data <- data
+  if (length(ind) == 1){
+    one_hot_data[, ind] <- as.character(one_hot_data[, ind])
+    unique_category <- unique(data[, ind])
+    no_cat <- length(unique_category)
+  }else{
+    one_hot_data[, ind] <- lapply(one_hot_data[, ind], as.character)
+    unique_category <- lapply(data[, ind], unique)
+    no_cat <- unlist(lapply(unique_category, length))
+  }
+  one_hot <- caret::dummyVars(" ~ .", data = one_hot_data)
+  one_hot_data <- data.frame(predict(one_hot, newdata = one_hot_data))
+  
+  new_ind <- c(ind[1], ind + no_cat)
+  cutpoint <- new_ind[-length(new_ind)]
+  new_ind <- c(mapply(function(x, y) seq(x, y), 
+                      cutpoint, cutpoint + no_cat - 1))
+  count <- 1
+  for (i in new_ind){
+    if (i %in% cutpoint[-1]){
+      count <- count + 1
+    }
+    ind_inactive <- which(one_hot_data[, i] == 0)
+    one_hot_data[ind_inactive, i] <- runif(length(ind_inactive), 
+                                           min = 0, max = 1/no_cat[count] - 1e-8)
+  }
+  count <- 1
+  for (j in new_ind){
+    if (j %in% cutpoint[-1]){
+      count <- count + 1
+    }
+    ind_active <- which(one_hot_data[, j] == 1)
+    if (j %in% cutpoint){
+      submatrix <- one_hot_data[, j:(j + no_cat[count] - 1)]
+    }
+    one_hot_data[ind_active, j] <- 2 - rowSums(submatrix)[ind_active]
+  }
+  return (list(one_hot_data, new_ind))
+}
 
 normalize <- function(data, parameters = NULL, Var){
   norm_data <- data
@@ -43,7 +82,7 @@ renormalize <- function(norm_data, norm_parameters, Var){
 
 
 
-uniform_sampling <- function(min, max, nr, nc, matrix = c("z", "h"), hint_rate = NULL, device){
+uniform_sampling <- function(min = 0, max = 1, nr = 128, nc = 1, matrix = c("z", "h"), hint_rate = NULL, device){
   random_unif <- runif(min = min, max = max, n = nr * nc)
   unif_matrix <- matrix(random_unif, nrow = nr, ncol = nc, byrow = T)
   if (matrix == "z"){
